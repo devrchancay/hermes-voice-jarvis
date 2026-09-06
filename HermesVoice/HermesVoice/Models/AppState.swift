@@ -342,6 +342,12 @@ final class AppState {
             } catch {
                 self.synthesizer.stop()
                 self.disarmInterruptionDetection()
+
+                // Cancellation surfaces here as a thrown error. It is not a failure:
+                // the caller already decided what to keep, and showing an error
+                // banner for a deliberate stop would be wrong.
+                guard !Task.isCancelled else { return }
+
                 if !accumulated.isEmpty {
                     self.appendMessage(Message(role: .assistant, content: accumulated))
                 }
