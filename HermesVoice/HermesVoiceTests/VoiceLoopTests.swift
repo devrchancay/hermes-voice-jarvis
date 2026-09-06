@@ -16,11 +16,14 @@ final class StubURLProtocol: URLProtocol {
     nonisolated(unsafe) static var healthStatus = 200
     /// Every request that reached the transport, for assertions.
     nonisolated(unsafe) static private(set) var recordedBodies: [Data] = []
+    /// Pause between SSE lines. Non-zero makes the stream cancellable mid-flight.
+    nonisolated(unsafe) static var chunkDelay: Duration = .zero
 
     static func reset() {
         streamBody = ""
         chatStatus = 200
         healthStatus = 200
+        chunkDelay = .zero
         recordedBodies = []
     }
 
@@ -62,11 +65,32 @@ final class StubURLProtocol: URLProtocol {
         )!
 
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: body)
+
+        guard isChat, Self.chunkDelay > .zero else {
+            client?.urlProtocol(self, didLoad: body)
+            client?.urlProtocolDidFinishLoading(self)
+            return
+        }
+
+        // Trickle the stream out so a test can cancel part-way through. startLoading
+        // already runs off the main thread, so sleeping here is fine for a stub, and
+        // it keeps `self` off a Task — URLProtocol is not Sendable.
+        let interval = Self.chunkDelay
+        for line in Self.streamBody.components(separatedBy: "\n") {
+            if cancelled.value { return }
+            Thread.sleep(forTimeInterval: interval.seconds)
+            if cancelled.value { return }
+            client?.urlProtocol(self, didLoad: Data((line + "\n").utf8))
+        }
+        guard !cancelled.value else { return }
         client?.urlProtocolDidFinishLoading(self)
     }
 
-    override func stopLoading() {}
+    private let cancelled = AtomicFlag()
+
+    override func stopLoading() {
+        cancelled.set()
+    }
 
     /// A session wired to this stub.
     static func makeSession() -> URLSession {
@@ -93,6 +117,31 @@ final class StubURLProtocol: URLProtocol {
             lines.append("")
         }
         return lines.joined(separator: "\n")
+    }
+}
+
+/// A one-way flag readable from another thread.
+private final class AtomicFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var flag = false
+
+    var value: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return flag
+    }
+
+    func set() {
+        lock.lock()
+        flag = true
+        lock.unlock()
+    }
+}
+
+private extension Duration {
+    var seconds: TimeInterval {
+        let (secs, atto) = components
+        return TimeInterval(secs) + TimeInterval(atto) / 1e18
     }
 }
 
