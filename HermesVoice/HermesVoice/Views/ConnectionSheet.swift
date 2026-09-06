@@ -9,7 +9,6 @@ struct ConnectionSheet: View {
 
     @State private var testState: TestState = .untested
     @State private var urlError: String?
-    @State private var keyError: String?
 
     private enum TestState: Equatable {
         case untested
@@ -79,7 +78,7 @@ struct ConnectionSheet: View {
 
         HermesField(
             title: "API key",
-            error: keyError,
+            error: nil,
             content: {
                 SecureField("sk-…", text: $state.apiKey)
                     .textFieldStyle(.plain)
@@ -87,10 +86,15 @@ struct ConnectionSheet: View {
                     .foregroundStyle(HermesColors.text)
                     .onChange(of: state.apiKey) { _, _ in
                         testState = .untested
-                        keyError = nil
                     }
             }
         )
+
+        Text("Leave it empty if the server runs without authentication, as a local "
+             + "`hermes serve` does. No Authorization header is sent then.")
+            .font(HermesFonts.mono(10))
+            .foregroundStyle(HermesColors.text.opacity(0.45))
+            .fixedSize(horizontal: false, vertical: true)
 
         HStack(spacing: 12) {
             Button(action: testConnection) {
@@ -271,7 +275,6 @@ struct ConnectionSheet: View {
     private func validate() -> Bool {
         let url = appState.serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
         urlError = nil
-        keyError = nil
 
         if url.isEmpty {
             urlError = "Enter the URL of your Hermes API server."
@@ -281,10 +284,9 @@ struct ConnectionSheet: View {
             urlError = "That does not look like a valid URL."
         }
 
-        if appState.apiKey.isEmpty {
-            keyError = "Enter the API key your server expects."
-        }
-        return urlError == nil && keyError == nil
+        // The key stays optional: a server with no auth is a valid target, and
+        // `HermesClient` omits the header when it is empty.
+        return urlError == nil
     }
 
     private func voiceLabel(_ voice: AVSpeechSynthesisVoice) -> String {
