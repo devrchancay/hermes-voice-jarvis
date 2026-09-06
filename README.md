@@ -82,7 +82,9 @@ cd hermes-voice-jarvis
 open HermesVoice/HermesVoice.xcodeproj
 ```
 
-Build and run (⌘R). On first launch the app asks for your server URL and API key.
+Build and run (⌘R). On first launch the app asks for your server URL and API key. The key
+is optional — leave it empty for a server that runs without authentication, such as a
+local `hermes serve`, and no `Authorization` header is sent.
 
 ### No backend handy?
 
@@ -92,7 +94,7 @@ There is a mock server in the repo. Standard library only, nothing to install:
 python3 tools/mock-server.py
 ```
 
-Then point the app at `http://localhost:8642` with any non-empty API key. It streams a
+Then point the app at `http://localhost:8642`, with or without an API key. It streams a
 canned reply in whichever language you have selected, so the whole loop — including a
 language switch — works end to end.
 
@@ -103,7 +105,7 @@ Everything lives in the settings sheet, behind the gear button.
 | Setting | Stored in |
 |---|---|
 | Server URL | `UserDefaults` |
-| API key | **Keychain** |
+| API key (optional) | **Keychain** |
 | Language | `UserDefaults` |
 | Preferred voice, per language | `UserDefaults` |
 | Activation mode | `UserDefaults` |

@@ -17,6 +17,7 @@ xcuserdata/
 *.dSYM.zip
 *.dSYM
 
+temp_auto_push.bat
 # Xcode workspace / project user state
 *.xcworkspace/xcuserdata/
 *.xcodeproj/xcuserdata/
@@ -37,3 +38,5 @@ playground.xcworkspace
 *.env
 .env.local
 Secrets.plist
+.gitignore
+branch_structure.json
