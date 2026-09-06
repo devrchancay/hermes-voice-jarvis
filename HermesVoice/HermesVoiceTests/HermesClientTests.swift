@@ -62,22 +62,27 @@ final class HermesClientTests: XCTestCase {
             #"data: {"choices":[{"delta":{"content":"never"}}]}"#,
         ]
 
+        // Mirrors the client's pump loop, which returns as soon as [DONE] arrives.
         var tokens: [String] = []
         var finished = false
+        var linesConsumed = 0
         for line in stream {
+            linesConsumed += 1
             switch HermesClient.parseSSELine(line) {
             case .token(let text):
-                XCTAssertFalse(finished, "Tokens must not be emitted after [DONE]")
                 tokens.append(text)
             case .done:
                 finished = true
             case .ignored:
                 continue
             }
+            if finished { break }
         }
 
         XCTAssertTrue(finished)
         XCTAssertEqual(tokens.joined(), "Hola, mundo")
+        XCTAssertEqual(linesConsumed, stream.count - 1,
+                       "Anything after [DONE] must never be read")
     }
 
     // MARK: - Request body
