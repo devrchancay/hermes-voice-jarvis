@@ -49,7 +49,9 @@ The app's central state, which coordinates the components and defines the transi
        // Configuration
        var serverURL: String  // persisted
        var apiKey: String     // persisted (Keychain)
-       var selectedVoiceId: String?
+       var language: SpeechLanguage             // persisted by id — see task 08
+       var voiceIdsByLanguage: [String: String] // language id → voice id
+       var customSystemPrompt: String?          // nil = default template
        var activationMode: ActivationMode = .pushToTalk
 
        enum ActivationMode: String {
@@ -68,8 +70,13 @@ The app's central state, which coordinates the components and defines the transi
        func startListening()
        func stopListeningAndSend() async
        func cancelCurrentRequest()
+       func changeLanguage(to language: SpeechLanguage)  // see task 08
    }
    ```
+
+   `SpeechLanguage` and its catalog are specified in task 08. Define the stored
+   properties and their persistence here; the resolution and switching logic
+   lands with the voice loop.
 
 5. `connect()`:
    - Configure the client with the URL and key
@@ -97,8 +104,14 @@ The app's central state, which coordinates the components and defines the transi
 8. Persistence:
    - `serverURL` in UserDefaults
    - `apiKey` in the Keychain (SecItemAdd/SecItemCopyMatching)
-   - `selectedVoiceId` in UserDefaults
+   - `language` in UserDefaults, storing only `language.id`
+   - `voiceIdsByLanguage` in UserDefaults (a `[String: String]` dictionary)
+   - `customSystemPrompt` in UserDefaults
    - `activationMode` in UserDefaults
+
+   On launch, rehydrate the language through the catalog: a saved id that is no
+   longer available (voice uninstalled, OS update) must fall back to the default
+   instead of leaving the app in a broken state.
 
 ## Acceptance criteria
 - [ ] Correct state transitions: idle → listening → thinking → speaking → idle
@@ -106,6 +119,7 @@ The app's central state, which coordinates the components and defines the transi
 - [ ] Streaming works end to end: SSE tokens → currentResponse → TTS
 - [ ] Configuration persists across sessions
 - [ ] The API key is stored in the Keychain, not in UserDefaults
+- [ ] The selected language persists and survives an unavailable saved id
 - [ ] `cancelCurrentRequest()` aborts and returns to idle
 - [ ] A connection error shows the error state
 - [ ] Builds without warnings

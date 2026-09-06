@@ -15,6 +15,8 @@ only thing you pay for is the LLM itself.
 
 - **On-device STT** — SFSpeechRecognizer, no audio ever leaves the machine
 - **On-device TTS** — AVSpeechSynthesizer with Siri voices
+- **Any language** — one setting drives recognition, synthesis, and the language
+  the model replies in; switchable without restarting
 - **Streaming responses** — SSE token streaming; the app starts speaking before
   the full answer has arrived
 - **Any OpenAI-compatible backend** — Hermes, OpenAI, Ollama, LM Studio

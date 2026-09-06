@@ -16,8 +16,10 @@ License: MIT
 2. **Zero dependencies** — Apple frameworks only. No SPM, no CocoaPods, nothing.
 3. **Zero voice cost** — STT and TTS 100% on-device (SFSpeechRecognizer + AVSpeechSynthesizer).
 4. **Connects to any Hermes** — all it needs is the API server URL + API key.
-5. **Jarvis look** — dark interface, translucent HUD, animated central orb, waveforms.
-6. **Spec-driven** — every task is self-contained, verifiable, and built with Claude Code.
+5. **Any language** — one setting drives recognition, synthesis, and the language
+   the model answers in. Nothing is hardcoded to a single locale.
+6. **Jarvis look** — dark interface, translucent HUD, animated central orb, waveforms.
+7. **Spec-driven** — every task is self-contained, verifiable, and built with Claude Code.
 
 
 ## Architecture
@@ -142,7 +144,8 @@ hermes-voice-jarvis/
 │   │   │   └── ConnectionSheet.swift
 │   │   ├── Models/
 │   │   │   ├── AppState.swift
-│   │   │   └── Message.swift
+│   │   │   ├── Message.swift
+│   │   │   └── SpeechLanguage.swift
 │   │   ├── Resources/
 │   │   │   └── Assets.xcassets/
 │   │   └── HermesVoice.entitlements
@@ -210,7 +213,8 @@ hermes-voice-jarvis/
 
 ## Interaction flow
 
-1. User opens the app → connection screen if no URL is saved
+1. User opens the app → connection screen if no URL is saved (language defaults
+   to the system locale)
 2. App checks `GET /health` on the server → orb goes to Idle
 3. User presses the microphone button (or a global hotkey) → orb goes to Listening
 4. SFSpeechRecognizer transcribes in real time → text appears above the orb
@@ -222,12 +226,37 @@ hermes-voice-jarvis/
 10. (Phase 3) Continuous detection: if the user speaks during Speaking, it interrupts
 
 
+## Language
+
+A single `SpeechLanguage` setting drives three things at once:
+
+| Consumer            | How it uses the setting                        |
+|---------------------|------------------------------------------------|
+| SFSpeechRecognizer  | built with that `Locale`                        |
+| AVSpeechSynthesizer | voices filtered by that language code           |
+| System prompt       | `Always reply in <English name of the language>.` |
+
+The available list is the intersection of what the device can transcribe
+(`SFSpeechRecognizer.supportedLocales()`) and what it can speak (installed
+`AVSpeechSynthesisVoice`s) — a language you can hear but not speak would break
+the loop. The default follows the system locale, falling back to `en-US`.
+
+The system prompt template stays in English: it is an instruction to the model,
+not user-facing copy. The reply language is injected as a directive, so
+supporting a new language costs nothing beyond the OS having the voice.
+
+Switching language mid-session is supported and preserves the conversation
+history. See task 08 for the catalog and the switching rules.
+
+
 ## Persistence
 
 - `UserDefaults` for:
   - Hermes server URL
   - API key (in the Keychain via SecItemAdd)
-  - Preferred voice (AVSpeechSynthesisVoice id)
+  - Selected language (BCP-47 id, e.g. "es-ES")
+  - Preferred voice per language (`[language id: AVSpeechSynthesisVoice id]`)
+  - Custom system prompt (optional; nil uses the default template)
   - Activation mode (push-to-talk vs continuous)
 - `@AppStorage` for simple UI preferences
 - Conversation history: array of `Message` in memory (not persisted across sessions in the MVP)
@@ -239,6 +268,7 @@ Every task defines its own acceptance criteria. Minimum tests:
 - `HermesClientTests` — SSE parsing, request building
 - `SpeechRecognizerTests` — state handling, permissions
 - `AppStateTests` — orb state transitions
+- `SpeechLanguageTests` — catalog filtering, default resolution, prompt directive
 - Working UI previews for every view
 
 
