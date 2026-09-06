@@ -48,6 +48,7 @@ struct ConversationHistoryView: View {
             .buttonStyle(.plain)
             .padding(.leading, 10)
             .help("Close")
+            .accessibilityLabel("Close history")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 13)
@@ -178,6 +179,10 @@ private struct MessageRow: View {
         .contentShape(Rectangle())
         .onTapGesture(perform: onCopy)
         .help("Click to copy")
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(isUser ? "You" : "Hermes"): \(message.content)")
+        .accessibilityHint("Copies this message")
+        .accessibilityAddTraits(.isButton)
     }
 }
 

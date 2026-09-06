@@ -29,6 +29,17 @@ enum OrbState: Equatable {
         if case .error(let message) = self { return message }
         return nil
     }
+
+    /// Read by VoiceOver in place of the orb, which is purely decorative.
+    var spokenStatus: String {
+        switch self {
+        case .idle: return "Ready"
+        case .listening: return "Listening"
+        case .thinking: return "Thinking"
+        case .speaking: return "Speaking"
+        case .error(let message): return "Error. \(message)"
+        }
+    }
 }
 
 // MARK: - App state

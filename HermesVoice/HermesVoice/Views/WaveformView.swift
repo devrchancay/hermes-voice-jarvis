@@ -69,6 +69,7 @@ struct WaveformView: View {
             }
         }
         .allowsHitTesting(false)
+        .accessibilityHidden(true)
         // The bands are already smoothed in the analyser; this softens the fade in/out.
         .animation(.easeOut(duration: 0.08), value: bands)
     }
