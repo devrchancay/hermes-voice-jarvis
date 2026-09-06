@@ -71,7 +71,7 @@ final class HermesClient {
     var model: String = "hermes-agent"
 
     private var streamTask: Task<Void, Never>?
-    private let session: URLSession
+    private var session: URLSession
 
     private nonisolated static let logger = Logger(
         subsystem: "com.desarol.hermes-voice",
@@ -189,6 +189,11 @@ final class HermesClient {
         continuation.onTermination = { _ in task.cancel() }
 
         return stream
+    }
+
+    /// Test seam: swaps the transport so tests can stub the network.
+    func replaceSession(_ session: URLSession) {
+        self.session = session
     }
 
     /// Aborts the in-flight streaming request, if any.

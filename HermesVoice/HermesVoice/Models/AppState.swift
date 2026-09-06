@@ -105,6 +105,9 @@ final class AppState {
     private var interruptionArmedAt: Date?
     private var errorResetTask: Task<Void, Never>?
 
+    /// True in previews and unit tests: no audio is played and no key is read.
+    private let isPreviewing: Bool
+
     private static let keychainAccount = "api-key"
     private static let logger = Logger(subsystem: "com.desarol.hermes-voice", category: "AppState")
 
@@ -134,6 +137,7 @@ final class AppState {
                 hasInstalledVoice: false
             )
 
+        self.isPreviewing = previewing
         self.audioEngine = engine
         self.language = resolved
         self.availableLanguages = SpeechLanguageCatalog.available()
@@ -304,7 +308,7 @@ final class AppState {
 
         let prompt = systemPrompt()
         let history = messages
-        synthesizer.speakStreaming()
+        if !isPreviewing { synthesizer.speakStreaming() }
 
         streamTask?.cancel()
         streamTask = Task { [weak self] in
@@ -322,7 +326,7 @@ final class AppState {
                     }
                     accumulated += token
                     self.currentResponse = accumulated
-                    self.synthesizer.appendToken(token)
+                    if !self.isPreviewing { self.synthesizer.appendToken(token) }
                 }
             } catch {
                 self.synthesizer.stop()
@@ -337,10 +341,10 @@ final class AppState {
             if !accumulated.isEmpty {
                 self.appendMessage(Message(role: .assistant, content: accumulated))
             }
-            self.synthesizer.finishStreaming()
+            if !self.isPreviewing { self.synthesizer.finishStreaming() }
 
-            // Nothing to speak (no voice installed, or an empty reply) — close the turn.
-            if !self.synthesizer.hasVoice || accumulated.isEmpty {
+            // Nothing to speak (previewing, no voice installed, or an empty reply).
+            if self.isPreviewing || !self.synthesizer.hasVoice || accumulated.isEmpty {
                 self.handleSpeechFinished()
             }
         }
@@ -372,7 +376,13 @@ final class AppState {
     }
 
     /// Starts watching the microphone so the user can talk over the assistant.
+    ///
+    /// Requires an already-granted microphone permission: starting the engine without
+    /// one blocks in CoreAudio, and barge-in is not worth a permission prompt in the
+    /// middle of a reply.
     private func armInterruptionDetection() {
+        guard !isPreviewing else { return }
+        guard AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else { return }
         guard activationMode == .continuous || recognizer.state != .listening else { return }
         guard !audioEngine.isInputRunning else { return }
         do {
@@ -592,6 +602,23 @@ final class AppState {
     private func cancelErrorReset() {
         errorResetTask?.cancel()
         errorResetTask = nil
+    }
+
+    // MARK: - Test seams
+
+    /// Swaps the client's transport so tests can stub the network.
+    func replaceClientSessionForTesting(_ session: URLSession) {
+        client.replaceSession(session)
+    }
+
+    /// Waits for the current turn to settle. Returns early rather than hanging.
+    func waitForIdleForTesting(allowError: Bool = false, timeout: TimeInterval = 5) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if orbState == .idle { return }
+            if allowError, orbState.errorMessage != nil { return }
+            try? await Task.sleep(for: .milliseconds(20))
+        }
     }
 }
 
