@@ -41,8 +41,8 @@ The orb tells you where you are without reading anything.
 | | |
 |---|---|
 | **Ready** | slow breath, dim blue |
-| **Listening** | the rim ripples with what the microphone hears |
-| **Processing** | fast pulse, particles orbiting, an arc sweeping the ring |
+| **Listening** | the filaments swell and quicken with what the microphone hears |
+| **Processing** | fast pulse, turbulent filaments, an arc sweeping the ring |
 | **Speaking** | concentric waves, rate following the voice |
 | **Error** | contracted, flickering orange |
 

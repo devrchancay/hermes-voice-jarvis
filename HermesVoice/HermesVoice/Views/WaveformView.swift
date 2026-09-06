@@ -22,7 +22,7 @@ struct WaveformView: View {
     let bands: [Float]
 
     /// Radius of the orb the fan wraps around.
-    var innerRadius: CGFloat = 122
+    var innerRadius: CGFloat = 132
     /// Arc the bars span, centred on the bottom of the orb.
     var arcDegrees: Double = 190
     /// Longest a bar can grow.
