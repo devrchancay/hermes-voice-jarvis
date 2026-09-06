@@ -1,4 +1,4 @@
-//  The central orb, drawn in Canvas: glow, ring, orbiting particles, and ripples.
+//  The central orb: a particle torus of light filaments orbiting a hollow core.
 
 import SwiftUI
 
@@ -29,35 +29,86 @@ struct OrbView: View {
 
     // MARK: - Geometry
 
-    /// Room for the largest glow and the widest ripple.
+    /// Room for the widest ripple and the outer bloom.
     private var canvasSide: CGFloat { 360 }
 
-    private var baseRadius: CGFloat {
-        switch state {
-        case .idle: return 60
-        case .listening: return 80
-        case .thinking: return 70
-        case .speaking: return 75
-        case .error: return 50
-        }
+    /// Tilt of the torus away from the viewer. Small, so the ring stays near face-on.
+    private let tilt: Double = 0.42
+
+    /// Distance to the projection plane. Large enough for a hint of perspective only.
+    private let focalLength: CGFloat = 900
+
+    /// Points sampled along each filament.
+    private let pointsPerStrand = 220
+
+    /// Depth slices the particles are batched into, so a frame costs a handful of fills.
+    private let depthSlices = 8
+
+    // MARK: - Look
+
+    /// Everything the current state changes about the torus.
+    private struct Look {
+        /// Radius of the ring the filaments are wound around.
+        var majorRadius: CGFloat
+        /// Radius of the tube the filaments wind through.
+        var tubeRadius: CGFloat
+        /// How far the ring is pushed out of round by the travelling waves.
+        var turbulence: CGFloat
+        /// In-plane rotation, radians per second.
+        var spin: Double
+        /// Windings of a filament around the tube per lap of the ring.
+        var twist: Double
+        /// Speed the windings travel along the tube.
+        var flow: Double
+        /// Number of filaments.
+        var strands: Int
+        /// Overall opacity multiplier.
+        var brightness: Double
+        /// Colour at the far side of the ring.
+        var farHex: UInt32
+        /// Colour at the near side of the ring.
+        var nearHex: UInt32
     }
 
-    // MARK: - Palette
-
-    private var coreColor: Color {
+    private func look(level: CGFloat) -> Look {
         switch state {
-        case .error: return HermesColors.error
-        case .thinking, .speaking: return HermesColors.secondary
-        case .listening: return HermesColors.secondary
-        case .idle: return HermesColors.primary
-        }
-    }
-
-    private var edgeColor: Color {
-        switch state {
-        case .error: return HermesColors.error
-        case .thinking: return HermesColors.secondary
-        default: return HermesColors.primary
+        case .idle:
+            return Look(
+                majorRadius: 86, tubeRadius: 12, turbulence: 0.055,
+                spin: 0.10, twist: 5, flow: 0.30,
+                strands: 6, brightness: 0.72,
+                farHex: HermesColors.primaryHex, nearHex: HermesColors.secondaryHex
+            )
+        case .listening:
+            return Look(
+                majorRadius: 88 + level * 6, tubeRadius: 13 + level * 9,
+                turbulence: 0.05 + level * 0.09,
+                spin: 0.18, twist: 5, flow: 0.9 + Double(level) * 1.2,
+                strands: 7, brightness: 0.92 + Double(level) * 0.08,
+                farHex: HermesColors.primaryHex, nearHex: HermesColors.secondaryHex
+            )
+        case .thinking:
+            return Look(
+                majorRadius: 84, tubeRadius: 16, turbulence: 0.11,
+                spin: 0.5, twist: 7, flow: 1.7,
+                strands: 8, brightness: 1,
+                farHex: HermesColors.primaryHex, nearHex: HermesColors.secondaryHex
+            )
+        case .speaking:
+            return Look(
+                majorRadius: 87 + level * 4, tubeRadius: 14 + level * 7,
+                turbulence: 0.07 + level * 0.05,
+                spin: 0.22, twist: 6, flow: 1.1,
+                strands: 7, brightness: 0.95,
+                farHex: HermesColors.secondaryHex, nearHex: HermesColors.secondaryHex
+            )
+        case .error:
+            return Look(
+                majorRadius: 68, tubeRadius: 9, turbulence: 0.03,
+                spin: 0.06, twist: 4, flow: 0.2,
+                strands: 5, brightness: 0.85,
+                farHex: HermesColors.errorHex, nearHex: HermesColors.errorHex
+            )
         }
     }
 
@@ -66,182 +117,194 @@ struct OrbView: View {
     private func draw(context: GraphicsContext, size: CGSize, time: Double) {
         let center = CGPoint(x: size.width / 2, y: size.height / 2)
         let level = CGFloat(max(0, min(1, audioLevel)))
-
-        let pulse = pulseScale(time: time)
-        let radius = baseRadius * pulse * (1 + level * 0.18)
         let intensity = errorFlicker(time: time)
 
-        drawGlow(context, center: center, radius: radius, intensity: intensity)
+        var look = look(level: level)
+        look.majorRadius *= pulseScale(time: time)
+
+        drawCoreHalo(context, center: center, look: look, level: level, intensity: intensity)
+        drawBloom(context, center: center, look: look, intensity: intensity)
 
         if case .speaking = state {
-            drawRipples(context, center: center, radius: radius, time: time, level: level)
+            drawRipples(context, center: center, look: look, time: time, level: level)
         }
 
-        drawCore(context, center: center, radius: radius, time: time, level: level,
-                 intensity: intensity)
-        drawRing(context, center: center, radius: radius, time: time, intensity: intensity)
+        drawTorus(context, center: center, look: look, time: time, intensity: intensity)
 
         if case .thinking = state {
-            drawParticles(context, center: center, radius: radius, time: time)
+            drawSweep(context, center: center, look: look, time: time)
         }
     }
 
-    /// Slow breath at rest, fast pulse while thinking.
+    /// Slow breath at rest, faster pulse while thinking.
     private func pulseScale(time: Double) -> CGFloat {
         switch state {
         case .idle:
-            return 1 + 0.03 * CGFloat(sin(time * 2 * .pi / 3))
+            return 1 + 0.025 * CGFloat(sin(time * 2 * .pi / 4))
         case .thinking:
-            return 1 + 0.05 * CGFloat(sin(time * 2 * .pi / 0.8))
+            return 1 + 0.04 * CGFloat(sin(time * 2 * .pi / 1.1))
         case .speaking:
             return 1 + 0.02 * CGFloat(sin(time * 2 * .pi / 1.4))
         case .listening:
-            return 1.0
+            return 1
         case .error:
-            return 0.8
+            return 1
         }
     }
 
-    /// Two or three orange blinks when an error lands, then steady.
+    /// Orange blinks while an error is showing.
     private func errorFlicker(time: Double) -> CGFloat {
         guard case .error = state else { return 1 }
         return 0.55 + 0.45 * CGFloat(abs(sin(time * 2 * .pi * 1.5)))
     }
 
-    private func drawGlow(
+    /// The filaments themselves: a torus of points, batched by depth.
+    private func drawTorus(
         _ context: GraphicsContext,
         center: CGPoint,
-        radius: CGFloat,
+        look: Look,
+        time: Double,
         intensity: CGFloat
     ) {
-        // Layered translucent discs read as a soft bloom without a blur filter.
-        for step in stride(from: 4, through: 1, by: -1) {
-            let factor = 1 + CGFloat(step) * 0.42
-            let rect = CGRect(
-                x: center.x - radius * factor,
-                y: center.y - radius * factor,
-                width: radius * factor * 2,
-                height: radius * factor * 2
+        let cosTilt = CGFloat(cos(tilt))
+        let sinTilt = CGFloat(sin(tilt))
+        // Depth spans the tilted ring plus the tube around it.
+        let depthRange = max(look.majorRadius * sinTilt + look.tubeRadius, 1)
+
+        var slices = [Path](repeating: Path(), count: depthSlices)
+
+        for strand in 0..<look.strands {
+            let index = Double(strand)
+            // The golden angle keeps the filaments evenly out of step with each other.
+            let strandPhase = index * 2.399963
+            let strandRadius = look.majorRadius * (1 + 0.06 * CGFloat(sin(index * 1.7)))
+
+            for step in 0..<pointsPerStrand {
+                let progress = Double(step) / Double(pointsPerStrand) * 2 * .pi
+                // Uneven sampling clumps the points, so the filament reads as dust
+                // rather than as a dotted line.
+                let theta = progress + 0.16 * sin(progress * 3 + strandPhase)
+                    + time * look.spin
+
+                let wave = sin(3 * theta + time * 0.6 + strandPhase)
+                    + 0.7 * sin(5 * theta - time * 0.45 + index)
+                    + 0.45 * sin(7 * theta + time * 0.9 + strandPhase)
+                    + 0.25 * sin(11 * theta - time * 0.7)
+                let major = strandRadius * (1 + look.turbulence * CGFloat(wave))
+
+                // Thickness of the tube breathes around the ring, so the filaments
+                // gather into knots and fan out again.
+                let tube = look.tubeRadius
+                    * (0.55 + 0.45 * CGFloat(sin(2 * theta + time * 0.5 + index)))
+                let phi = theta * look.twist + time * look.flow + strandPhase
+
+                let radial = major + tube * CGFloat(cos(phi))
+                let flatX = radial * CGFloat(cos(theta))
+                let flatY = radial * CGFloat(sin(theta))
+                let flatZ = tube * CGFloat(sin(phi))
+
+                // Tilt about the horizontal axis, then project.
+                let y = flatY * cosTilt - flatZ * sinTilt
+                let z = flatY * sinTilt + flatZ * cosTilt
+                let scale = focalLength / (focalLength - z)
+
+                let depth = max(0, min(1, Double(z / depthRange + 1) / 2))
+                let slice = min(depthSlices - 1, Int(depth * Double(depthSlices)))
+                let dotRadius = (0.5 + CGFloat(depth) * 0.85) * scale
+
+                let point = CGPoint(x: center.x + flatX * scale, y: center.y + y * scale)
+                slices[slice].addEllipse(
+                    in: CGRect(
+                        x: point.x - dotRadius,
+                        y: point.y - dotRadius,
+                        width: dotRadius * 2,
+                        height: dotRadius * 2
+                    )
+                )
+            }
+        }
+
+        for (slice, path) in slices.enumerated() {
+            let t = Double(slice) / Double(depthSlices - 1)
+            // Near points are brighter and cyan, far points dim and blue.
+            let opacity = (0.30 + 0.70 * pow(t, 1.3)) * look.brightness * Double(intensity)
+            context.fill(
+                path,
+                with: .color(HermesColors.blend(look.farHex, look.nearHex, t, opacity: opacity))
             )
-            let opacity = (0.085 / Double(step)) * Double(intensity)
-            context.fill(Circle().path(in: rect), with: .color(edgeColor.opacity(opacity)))
         }
     }
 
-    private func drawCore(
+    /// Wide, faint strokes along the ring, standing in for a bloom filter.
+    private func drawBloom(
         _ context: GraphicsContext,
         center: CGPoint,
-        radius: CGFloat,
-        time: Double,
+        look: Look,
+        intensity: CGFloat
+    ) {
+        for step in 1...3 {
+            let width = look.tubeRadius * CGFloat(step) * 1.6
+            let rect = CGRect(
+                x: center.x - look.majorRadius,
+                y: center.y - look.majorRadius,
+                width: look.majorRadius * 2,
+                height: look.majorRadius * 2
+            )
+            let opacity = (0.032 / Double(step)) * look.brightness * Double(intensity)
+            context.stroke(
+                Circle().path(in: rect),
+                with: .color(Color(hex: look.nearHex, opacity: opacity)),
+                lineWidth: width
+            )
+        }
+    }
+
+    /// The hollow middle: a dim disc and two hairlines that answer to the audio level.
+    private func drawCoreHalo(
+        _ context: GraphicsContext,
+        center: CGPoint,
+        look: Look,
         level: CGFloat,
         intensity: CGFloat
     ) {
-        let path: Path
-        if case .listening = state {
-            // The rim ripples in proportion to what the microphone hears.
-            path = wobblePath(center: center, radius: radius, time: time, amplitude: 2 + level * 6)
-        } else {
-            path = Circle().path(
-                in: CGRect(
-                    x: center.x - radius,
-                    y: center.y - radius,
-                    width: radius * 2,
-                    height: radius * 2
-                )
-            )
-        }
-
-        context.fill(
-            path,
-            with: .radialGradient(
-                Gradient(colors: [
-                    coreColor.opacity(0.95 * Double(intensity)),
-                    coreColor.opacity(0.45 * Double(intensity)),
-                    edgeColor.opacity(0.05),
-                ]),
-                center: center,
-                startRadius: 0,
-                endRadius: radius * 1.05
-            )
-        )
-
-        // Off-centre highlight, so the orb reads as a sphere rather than a disc.
-        let highlightRadius = radius * 0.5
-        let highlightCenter = CGPoint(x: center.x - radius * 0.28, y: center.y - radius * 0.28)
+        let coreRadius = look.majorRadius * 0.46
         context.fill(
             Circle().path(
                 in: CGRect(
-                    x: highlightCenter.x - highlightRadius,
-                    y: highlightCenter.y - highlightRadius,
-                    width: highlightRadius * 2,
-                    height: highlightRadius * 2
+                    x: center.x - coreRadius,
+                    y: center.y - coreRadius,
+                    width: coreRadius * 2,
+                    height: coreRadius * 2
                 )
             ),
             with: .radialGradient(
-                Gradient(colors: [Color.white.opacity(0.32 * Double(intensity)), .clear]),
-                center: highlightCenter,
-                startRadius: 0,
-                endRadius: highlightRadius
-            )
-        )
-    }
-
-    /// A circle whose radius varies sinusoidally with angle.
-    private func wobblePath(
-        center: CGPoint,
-        radius: CGFloat,
-        time: Double,
-        amplitude: CGFloat
-    ) -> Path {
-        var path = Path()
-        let steps = 90
-        for step in 0...steps {
-            let angle = Double(step) / Double(steps) * 2 * .pi
-            let wobble = amplitude * CGFloat(sin(angle * 5 + time * 6))
-                + amplitude * 0.5 * CGFloat(sin(angle * 8 - time * 4))
-            let r = radius + wobble
-            let point = CGPoint(
-                x: center.x + r * CGFloat(cos(angle)),
-                y: center.y + r * CGFloat(sin(angle))
-            )
-            if step == 0 { path.move(to: point) } else { path.addLine(to: point) }
-        }
-        path.closeSubpath()
-        return path
-    }
-
-    private func drawRing(
-        _ context: GraphicsContext,
-        center: CGPoint,
-        radius: CGFloat,
-        time: Double,
-        intensity: CGFloat
-    ) {
-        let ringRadius = radius * 1.32
-        let rect = CGRect(
-            x: center.x - ringRadius,
-            y: center.y - ringRadius,
-            width: ringRadius * 2,
-            height: ringRadius * 2
-        )
-        context.stroke(
-            Circle().path(in: rect),
-            with: .color(edgeColor.opacity(0.55 * Double(intensity))),
-            lineWidth: 1
-        )
-
-        // A brighter arc sweeping the ring gives the orb a sense of rotation.
-        if case .thinking = state {
-            var arc = Path()
-            let sweep = time.truncatingRemainder(dividingBy: 2) / 2 * 2 * .pi
-            arc.addArc(
+                Gradient(colors: [
+                    Color(
+                        hex: look.nearHex,
+                        opacity: (0.06 + Double(level) * 0.10) * Double(intensity)
+                    ),
+                    .clear,
+                ]),
                 center: center,
-                radius: ringRadius,
-                startAngle: .radians(sweep),
-                endAngle: .radians(sweep + .pi / 3),
-                clockwise: false
+                startRadius: 0,
+                endRadius: coreRadius
             )
-            context.stroke(arc, with: .color(HermesColors.secondary), lineWidth: 2)
+        )
+
+        for factor in [0.30, 0.42] as [CGFloat] {
+            let radius = look.majorRadius * factor
+            context.stroke(
+                Circle().path(
+                    in: CGRect(
+                        x: center.x - radius,
+                        y: center.y - radius,
+                        width: radius * 2,
+                        height: radius * 2
+                    )
+                ),
+                with: .color(Color(hex: look.nearHex, opacity: 0.10 * Double(intensity))),
+                lineWidth: 0.5
+            )
         }
     }
 
@@ -249,7 +312,7 @@ struct OrbView: View {
     private func drawRipples(
         _ context: GraphicsContext,
         center: CGPoint,
-        radius: CGFloat,
+        look: Look,
         time: Double,
         level: CGFloat
     ) {
@@ -259,54 +322,48 @@ struct OrbView: View {
         for index in 0..<count {
             let phase = (time / period + Double(index) / Double(count))
                 .truncatingRemainder(dividingBy: 1)
-            let rippleRadius = radius * (1.3 + CGFloat(phase) * 1.1)
-            let opacity = (1 - phase) * 0.35
+            let radius = look.majorRadius * (1.25 + CGFloat(phase) * 0.75)
+            let opacity = (1 - phase) * 0.28
             let rect = CGRect(
-                x: center.x - rippleRadius,
-                y: center.y - rippleRadius,
-                width: rippleRadius * 2,
-                height: rippleRadius * 2
+                x: center.x - radius,
+                y: center.y - radius,
+                width: radius * 2,
+                height: radius * 2
             )
             context.stroke(
                 Circle().path(in: rect),
                 with: .color(HermesColors.secondary.opacity(opacity)),
-                lineWidth: 1.5
+                lineWidth: 1.2
             )
         }
     }
 
-    /// Points orbiting the core while the model is thinking.
-    private func drawParticles(
+    /// A bright arc sweeping an outer ring, so thinking reads as work in progress.
+    private func drawSweep(
         _ context: GraphicsContext,
         center: CGPoint,
-        radius: CGFloat,
+        look: Look,
         time: Double
     ) {
-        let count = 5
-        let orbit = radius * 1.55
-        for index in 0..<count {
-            let offset = Double(index) / Double(count) * 2 * .pi
-            let angle = time * 1.6 + offset
-            // A slight vertical squash reads as a tilted orbital plane.
-            let point = CGPoint(
-                x: center.x + orbit * CGFloat(cos(angle)),
-                y: center.y + orbit * 0.42 * CGFloat(sin(angle))
-            )
-            // Dots on the far side of the orbit are dimmer and smaller.
-            let depth = (sin(angle) + 1) / 2
-            let dotRadius = 1.6 + CGFloat(depth) * 1.8
-            context.fill(
-                Circle().path(
-                    in: CGRect(
-                        x: point.x - dotRadius,
-                        y: point.y - dotRadius,
-                        width: dotRadius * 2,
-                        height: dotRadius * 2
-                    )
-                ),
-                with: .color(HermesColors.secondary.opacity(0.35 + depth * 0.6))
-            )
-        }
+        let radius = look.majorRadius * 1.34
+        var arc = Path()
+        let sweep = time.truncatingRemainder(dividingBy: 2) / 2 * 2 * .pi
+        arc.addArc(
+            center: center,
+            radius: radius,
+            startAngle: .radians(sweep),
+            endAngle: .radians(sweep + .pi / 3),
+            clockwise: false
+        )
+        context.stroke(
+            arc,
+            with: .linearGradient(
+                Gradient(colors: [HermesColors.secondary.opacity(0), HermesColors.secondary]),
+                startPoint: CGPoint(x: center.x - radius, y: center.y),
+                endPoint: CGPoint(x: center.x + radius, y: center.y)
+            ),
+            style: StrokeStyle(lineWidth: 1.6, lineCap: .round)
+        )
     }
 }
 
