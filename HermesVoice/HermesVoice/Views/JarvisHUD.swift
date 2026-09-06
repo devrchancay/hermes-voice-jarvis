@@ -19,7 +19,10 @@ struct JarvisHUD: View {
 
                 Spacer(minLength: 8)
 
-                UserTranscriptView(text: appState.currentTranscript)
+                UserTranscriptView(
+                    text: appState.currentTranscript,
+                    isLive: appState.orbState == .listening
+                )
                     .padding(.horizontal, 36)
                     .frame(height: 120)
 
