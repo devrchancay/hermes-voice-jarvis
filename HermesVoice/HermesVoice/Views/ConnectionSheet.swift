@@ -24,16 +24,14 @@ struct ConnectionSheet: View {
         VStack(alignment: .leading, spacing: 0) {
             header
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 22) {
-                    connectionSection(state: state)
-                    HermesDivider()
-                    languageSection(state: state)
-                    HermesDivider()
-                    behaviourSection(state: state)
-                }
-                .padding(24)
+            ScrollOrStack(alignment: .leading, spacing: 22) {
+                connectionSection(state: state)
+                HermesDivider()
+                languageSection(state: state)
+                HermesDivider()
+                behaviourSection(state: state)
             }
+            .padding(24)
 
             footer
         }

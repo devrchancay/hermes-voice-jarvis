@@ -95,6 +95,10 @@ struct JarvisHUD: View {
         }
         .frame(width: 360, height: 360)
         .animation(.easeInOut(duration: 0.25), value: waveformMode)
+        // One spoken status instead of two decorative canvases.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Assistant status")
+        .accessibilityValue(appState.orbState.spokenStatus)
     }
 
     /// Waveform is shown only while there is real audio to draw.
@@ -154,13 +158,18 @@ struct JarvisHUD: View {
                     .padding(.leading, 10)
             }
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            "\(appState.isConnected ? "Connected" : "Offline"), "
+                + "language \(appState.language.displayName)"
+        )
     }
 
     // MARK: - Controls
 
     private var controls: some View {
         HStack {
-            CircleButton(icon: "gearshape", size: 38) {
+            CircleButton(icon: "gearshape", label: "Settings", size: 38) {
                 showingSettings = true
             }
             .help("Settings")
@@ -173,6 +182,7 @@ struct JarvisHUD: View {
 
             CircleButton(
                 icon: "text.alignleft",
+                label: "Conversation history",
                 size: 38,
                 tint: appState.messages.isEmpty
                     ? HermesColors.text.opacity(0.2)
@@ -215,6 +225,13 @@ struct JarvisHUD: View {
         .animation(.easeOut(duration: 0.12), value: isHoldingMic)
         .help(continuous ? "Switch to push-to-talk" : "Hold to talk (⌘⇧Space)")
         .simultaneousGesture(pushToTalkGesture(enabled: !continuous))
+        .accessibilityLabel(continuous ? "Switch to push to talk" : "Hold to talk")
+        .accessibilityValue(listening ? "Listening" : "Idle")
+        .accessibilityHint(
+            continuous
+                ? "Turns off continuous listening"
+                : "Hold to speak, release to send. Or press Command Shift Space."
+        )
     }
 
     /// Press to start listening, release to send — the spec's push-to-talk behaviour.
@@ -263,6 +280,8 @@ struct JarvisHUD: View {
 
 struct CircleButton: View {
     let icon: String
+    /// Spoken by VoiceOver; the SF Symbol name alone is not a useful label.
+    let label: String
     var size: CGFloat = 38
     var tint: Color = HermesColors.primary
     let action: () -> Void
@@ -282,6 +301,7 @@ struct CircleButton: View {
             }
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(label)
     }
 }
 
