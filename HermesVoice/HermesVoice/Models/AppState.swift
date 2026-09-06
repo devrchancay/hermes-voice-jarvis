@@ -338,6 +338,13 @@ final class AppState {
                 return
             }
 
+            // A cancelled turn must not append anything. Whoever cancelled has already
+            // decided what to keep: interruptSpeech stores the partial answer itself,
+            // and clearConversation wants the history gone. Appending here would
+            // resurrect a message into a cleared conversation, or duplicate the one
+            // interruptSpeech just stored.
+            guard !Task.isCancelled else { return }
+
             if !accumulated.isEmpty {
                 self.appendMessage(Message(role: .assistant, content: accumulated))
             }
@@ -661,3 +668,34 @@ private extension SpeechRecognizerState {
         return nil
     }
 }
+
+// MARK: - Preview support
+
+#if DEBUG
+extension AppState {
+    /// Builds a state populated for SwiftUI previews and screenshot rendering.
+    ///
+    /// Debug-only: the setters it reaches are `private(set)` precisely so nothing in
+    /// the shipping app can drive the HUD into an inconsistent state.
+    static func preview(
+        orbState: OrbState = .idle,
+        transcript: String = "",
+        response: String = "",
+        messages: [Message] = [],
+        connected: Bool = true,
+        language: SpeechLanguage? = nil,
+        activationMode: ActivationMode = .pushToTalk
+    ) -> AppState {
+        let state = AppState(previewing: true)
+        state.orbState = orbState
+        state.currentTranscript = transcript
+        state.currentResponse = response
+        state.messages = messages
+        state.isConnected = connected
+        state.serverURL = "http://localhost:8642"
+        state.activationMode = activationMode
+        if let language { state.language = language }
+        return state
+    }
+}
+#endif
