@@ -10,7 +10,7 @@ struct HermesVoiceApp: App {
         WindowGroup {
             ContentView()
                 .environment(appState)
-                .frame(minWidth: 500, minHeight: 700)
+                .frame(minWidth: 460, minHeight: 640)
                 .background(HermesColors.background)
                 .preferredColorScheme(.dark)
         }
@@ -18,7 +18,32 @@ struct HermesVoiceApp: App {
         .windowResizability(.contentMinSize)
         .defaultSize(width: 520, height: 760)
         .commands {
+            // A hidden menu item is the simplest way to get a global-ish shortcut
+            // without the Accessibility permission an event tap would need.
             CommandGroup(replacing: .newItem) {}
+            CommandMenu("Voice") {
+                Button("Push to talk") {
+                    appState.startListening()
+                }
+                .keyboardShortcut(.space, modifiers: [.command, .shift])
+
+                Button("Send") {
+                    Task { await appState.stopListeningAndSend() }
+                }
+                .keyboardShortcut(.return, modifiers: [.command])
+
+                Divider()
+
+                Button("Stop") {
+                    appState.cancelCurrentRequest()
+                }
+                .keyboardShortcut(".", modifiers: [.command])
+
+                Button("Clear conversation") {
+                    appState.clearConversation()
+                }
+                .keyboardShortcut("k", modifiers: [.command])
+            }
         }
     }
 }
