@@ -387,3 +387,18 @@ enum AudioEngineError: LocalizedError {
         }
     }
 }
+
+// MARK: - Preview support
+
+#if DEBUG
+extension AudioEngine {
+    /// Injects fake meter readings so previews and screenshots can show a waveform
+    /// without opening the microphone.
+    func setMetersForPreview(inputLevel: Float, outputLevel: Float, bands: [Float]) {
+        self.inputLevel = inputLevel
+        self.outputLevel = outputLevel
+        self.inputBands = bands
+        self.outputBands = bands
+    }
+}
+#endif

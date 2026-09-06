@@ -7,6 +7,7 @@ struct JarvisHUD: View {
 
     @Binding var showingSettings: Bool
     @State private var isHoldingMic = false
+    @State private var showingHistory = false
 
     var body: some View {
         ZStack {
@@ -47,6 +48,31 @@ struct JarvisHUD: View {
             }
         }
         .overlay(alignment: .bottom) { errorBanner }
+        .overlay(alignment: .leading) { historyPanel }
+    }
+
+    // MARK: - History panel
+
+    @ViewBuilder
+    private var historyPanel: some View {
+        if showingHistory {
+            ZStack(alignment: .leading) {
+                // Tapping outside closes it, without stealing the conversation's focus.
+                Color.black.opacity(0.45)
+                    .ignoresSafeArea()
+                    .onTapGesture { showingHistory = false }
+
+                ConversationHistoryView(isPresented: $showingHistory)
+                    .frame(width: 320)
+                    .overlay(alignment: .trailing) {
+                        Rectangle()
+                            .fill(HermesColors.accent)
+                            .frame(width: 1)
+                    }
+                    .transition(.move(edge: .leading))
+            }
+            .animation(.easeInOut(duration: 0.22), value: showingHistory)
+        }
     }
 
     // MARK: - Orb
@@ -146,16 +172,16 @@ struct JarvisHUD: View {
             Spacer()
 
             CircleButton(
-                icon: "trash",
+                icon: "text.alignleft",
                 size: 38,
                 tint: appState.messages.isEmpty
                     ? HermesColors.text.opacity(0.2)
                     : HermesColors.primary
             ) {
-                appState.clearConversation()
+                withAnimation(.easeInOut(duration: 0.22)) { showingHistory.toggle() }
             }
             .disabled(appState.messages.isEmpty)
-            .help("Clear conversation")
+            .help("Conversation history")
         }
     }
 
