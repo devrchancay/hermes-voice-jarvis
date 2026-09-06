@@ -35,6 +35,8 @@ without justification.
 - Automated UI tests are not required for the MVP
 
 ## Git
-- One commit per completed task
-- Format: `feat(task-XX): short description`
-- Branch: `main` (no feature branches for the MVP)
+- One pull request per task, squash-merged into `main`
+- Branch name: `feat/task-XX-short-slug`
+- Commit and PR title: `feat(task-XX): short description`
+- The PR body lists the task's acceptance criteria and how each was verified
+- CI must be green before merging; `main` stays releasable at every commit
